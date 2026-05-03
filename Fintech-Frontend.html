@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fintech Gateway Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; background: #0a0a0a; color: #e0e0e0; }
+        h1 { color: #00ff88; }
+        h2 { color: #00aaff; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        button { background: #00aaff; color: white; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #0088cc; }
+        button.danger { background: #ff4444; }
+        button.danger:hover { background: #cc0000; }
+        .response { background: #1a1a1a; border: 1px solid #333; padding: 15px; margin: 10px 0; border-radius: 4px; font-family: monospace; white-space: pre-wrap; min-height: 60px; }
+        .status { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .allow { background: #003300; color: #00ff88; }
+        .block { background: #330000; color: #ff4444; }
+        .throttle { background: #332200; color: #ffaa00; }
+        .section { background: #111; border: 1px solid #222; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        label { display: block; margin: 8px 0 4px; color: #aaa; font-size: 14px; }
+        input { background: #1a1a1a; border: 1px solid #444; color: #e0e0e0; padding: 8px; width: 300px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<h1>🛡️ Adaptive Fintech API Security Gateway</h1>
+<p>Live demo of an intelligent security middleware system built with Spring Boot, Redis, and MySQL.</p>
+
+<!-- Health Check -->
+<div class="section">
+    <h2>1. System Health</h2>
+    <p>Check if Gateway, Redis, MySQL, and Backend are all operational.</p>
+    <button onclick="checkHealth()">Check Health</button>
+    <div class="response" id="healthResponse">Click to check system health...</div>
+</div>
+
+<!-- Normal Request -->
+<div class="section">
+    <h2>2. Normal Request (ALLOW)</h2>
+    <p>A legitimate request flows through the gateway to the backend.</p>
+    <label>Account ID:</label>
+    <input type="text" id="accountId" value="ACC123">
+    <button onclick="getBalance()">Get Balance</button>
+    <div class="response" id="balanceResponse">Response will appear here...</div>
+</div>
+
+<!-- Payment with Idempotency -->
+<div class="section">
+    <h2>3. Payment + Idempotency</h2>
+    <p>Send the same payment twice — second call returns cached response without hitting backend.</p>
+    <label>Idempotency Key:</label>
+    <input type="text" id="idemKey" value="PAY-DEMO-001">
+    <button onclick="sendPayment()">Send Payment</button>
+    <button onclick="sendPayment()">Send Again (duplicate)</button>
+    <div class="response" id="paymentResponse">Response will appear here...</div>
+</div>
+
+<!-- SQL Injection -->
+<div class="section">
+    <h2>4. Attack Detection (SQL Injection)</h2>
+    <p>Malicious payload is detected and blocked before reaching the backend.</p>
+    <button class="danger" onclick="sendSQLInjection()">Send SQL Injection Attack</button>
+    <div class="response" id="attackResponse">Response will appear here...</div>
+</div>
+
+<!-- Rate Limiting -->
+<div class="section">
+    <h2>5. Adaptive Rate Limiting</h2>
+    <p>Rapid requests trigger throttling, then blocking. Score climbs with each request.</p>
+    <button onclick="sendRapidRequests()">Send 15 Rapid Requests</button>
+    <div class="response" id="rateResponse">Response will appear here...</div>
+</div>
+
+<!-- Feedback API -->
+<div class="section">
+    <h2>6. Feedback API (False Positive Recovery)</h2>
+    <p>Ops team can unblock a legitimate user who was wrongly blocked.</p>
+    <label>IP to unblock:</label>
+    <input type="text" id="unblockIp" value="0:0:0:0:0:0:0:1">
+    <button onclick="sendFeedback()">Report False Positive</button>
+    <div class="response" id="feedbackResponse">Response will appear here...</div>
+</div>
+
+<script>
+    const GATEWAY = 'http://localhost:8081';
+
+    async function checkHealth() {
+        const res = await fetch(`${GATEWAY}/health`);
+        const data = await res.json();
+        document.getElementById('healthResponse').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function getBalance() {
+        const id = document.getElementById('accountId').value;
+        const res = await fetch(`${GATEWAY}/api/account/balance?accountId=${id}`);
+        const data = await res.json();
+        document.getElementById('balanceResponse').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function sendPayment() {
+        const key = document.getElementById('idemKey').value;
+        const res = await fetch(`${GATEWAY}/api/payments/transfer`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': key
+            },
+            body: JSON.stringify({
+                fromAccountId: 'ACC123',
+                toAccountId: 'ACC456',
+                amount: 5000,
+                currency: 'INR',
+                idempotencyKey: key
+            })
+        });
+        const data = await res.json();
+        document.getElementById('paymentResponse').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function sendSQLInjection() {
+        const res = await fetch(`${GATEWAY}/api/payments/transfer`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': 'ATTACK-' + Date.now()
+            },
+            body: JSON.stringify({
+                fromAccountId: "ACC123' OR '1'='1",
+                toAccountId: 'ACC456',
+                amount: 5000,
+                currency: 'INR',
+                idempotencyKey: 'ATTACK-001'
+            })
+        });
+        const data = await res.json();
+        document.getElementById('attackResponse').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function sendRapidRequests() {
+        const results = [];
+        for (let i = 0; i < 15; i++) {
+            const res = await fetch(`${GATEWAY}/api/account/balance?accountId=ACC123`);
+            const status = res.status;
+            results.push(`Request ${i+1}: HTTP ${status}`);
+            document.getElementById('rateResponse').textContent = results.join('\n');
+        }
+    }
+
+    async function sendFeedback() {
+        const ip = document.getElementById('unblockIp').value;
+        const res = await fetch(`${GATEWAY}/feedback/false-positive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip: ip, reason: 'Demo - false positive recovery' })
+        });
+        const data = await res.json();
+        document.getElementById('feedbackResponse').textContent = JSON.stringify(data, null, 2);
+    }
+</script>
+
+</body>
+</html>
